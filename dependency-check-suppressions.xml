@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Excepciones aceptadas de OWASP Dependency-Check.
+  Regla: cada <suppress> debe llevar una justificacion y una fecha de revision.
+  Ejemplo (NO activo):
+    <suppress until="2026-12-31Z">
+      <notes>Falso positivo: el componente no se usa en tiempo de ejecucion.</notes>
+      <packageUrl regex="true">^pkg:maven/org\.example/lib@.*$</packageUrl>
+      <cve>CVE-0000-00000</cve>
+    </suppress>
+-->
+<suppressions xmlns="https://jeremylong.github.io/DependencyCheck/dependency-suppression.1.3.xsd">
+</suppressions>

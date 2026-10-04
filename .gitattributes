@@ -1,0 +1,9 @@
+# Normalizar saltos de linea (el repo se edita en Windows y se ejecuta en Linux)
+* text=auto
+# Scripts que se ejecutan en Linux (runner, Docker): siempre LF
+mvnw text eol=lf
+*.sh text eol=lf
+.github/scripts/*.py text eol=lf
+# Scripts de Windows: CRLF
+*.cmd text eol=crlf
+*.bat text eol=crlf
