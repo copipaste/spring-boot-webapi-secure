@@ -91,7 +91,7 @@
             <plugin>
                 <groupId>org.owasp</groupId>
                 <artifactId>dependency-check-maven</artifactId>
-                <version>11.1.1</version>
+                <version>13.0.0</version>
                 <configuration>
                     <failBuildOnCVSS>${odc.failBuildOnCVSS}</failBuildOnCVSS>
                     <!-- La clave NVD no se guarda en el repo: se lee de la variable de entorno NVD_API_KEY
