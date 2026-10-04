@@ -1,6 +1,6 @@
 # ---- Build stage ----
 # Imagen de Maven oficial: no depende de mvnw ni de descargar Maven en cada build.
-FROM maven:3.9-eclipse-temurin-21 AS builder
+FROM maven:3-eclipse-temurin-24 AS builder
 WORKDIR /app
 
 # Primero el pom (mejor cache de capas) y luego el codigo
