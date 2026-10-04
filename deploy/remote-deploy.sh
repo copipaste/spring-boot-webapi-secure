@@ -35,15 +35,20 @@ echo ">> Desplegando $IMAGE como $CONTAINER en el puerto $APP_PORT"
 docker pull "$IMAGE"
 docker rm -f "$CONTAINER" >/dev/null 2>&1 || true
 
-# SPRING_PROFILES_ACTIVE=prod desactiva la consola H2 y limita Actuator (application-prod.properties)
+# SPRING_PROFILES_ACTIVE=prod desactiva la consola H2 y limita Actuator (application-prod.properties).
+# Limites de memoria: el servidor del laboratorio es pequeno (t3.micro, ~1 GB) y aloja dos contenedores.
+# SerialGC reduce el consumo de la JVM con heaps pequenos. Se pueden sobrescribir en /etc/deploy-webapi.conf.
 docker run -d \
   --name "$CONTAINER" \
   --restart unless-stopped \
+  --memory "${CONTAINER_MEMORY:-360m}" \
+  --memory-swap "${CONTAINER_MEMORY_SWAP:-720m}" \
   -p "${APP_PORT}:8080" \
   -e SPRING_PROFILES_ACTIVE=prod \
+  -e JAVA_TOOL_OPTIONS="-XX:+UseSerialGC" \
   "$IMAGE" >/dev/null
 
-for i in $(seq 1 40); do
+for i in $(seq 1 60); do
   if curl -fsS "http://localhost:${APP_PORT}/actuator/health"; then
     echo
     echo "OK: ${CONTAINER} responde en el intento ${i}"
