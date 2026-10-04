@@ -10,7 +10,7 @@ RUN mvn -B -DskipTests package
 
 # ---- Runtime stage ----
 # JRE (no JDK): imagen mas pequena y menor superficie de ataque
-FROM eclipse-temurin:21-jre-alpine
+FROM eclipse-temurin:25-jre-alpine
 
 # Seguridad: ejecutar como usuario sin privilegios (Alpine usa addgroup/adduser, no groupadd/useradd)
 RUN addgroup -S spring && adduser -S -G spring spring
