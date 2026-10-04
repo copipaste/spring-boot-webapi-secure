@@ -1,5 +1,14 @@
-target/classes
-target/test-classes
+# El build usa solo pom.xml y src/: todo lo demas se excluye del contexto
+target
 .git
+.github
 .idea
+.vscode
 *.iml
+docs
+evidencias
+*.md
+*.log
+.mvn
+mvnw
+mvnw.cmd

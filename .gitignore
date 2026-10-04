@@ -3,3 +3,18 @@ target/
 *.iml
 .vscode/
 *.log
+
+# Salidas locales de escaneres y del Quality Gate
+quality-gate-summary.md
+semgrep-out/
+sarif-results/
+reports/
+ssm-params.json
+
+# Llaves y credenciales: NUNCA al repositorio
+*.pem
+*.ppk
+*.key
+id_rsa*
+id_ed25519*
+lab3_gha_deploy*

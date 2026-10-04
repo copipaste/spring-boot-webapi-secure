@@ -1,10 +1,10 @@
-name: Security - Semgrep
+name: Security - Semgrep (manual)
 
+# Laboratorio 1. Desde el Laboratorio 3 Semgrep forma parte del pipeline principal
+# (job "SAST - Semgrep" en _ci-core.yml, con Quality Gate), asi que este workflow queda
+# solo para ejecucion manual ("Run workflow") y evita escaneos duplicados.
+# (Se corrigio ademas el trigger anterior: 'feature/**' tenia una comilla mal cerrada y nunca coincidia.)
 on:
-  push:
-    branches: [feature/**', 'bugfix/**', 'hotfix/**']
-  pull_request:
-    branches: [main, develop]
   workflow_dispatch:
 
 permissions:
@@ -12,15 +12,15 @@ permissions:
 
 jobs:
   semgrep:
-    name: SAST con Semgrep
-    runs-on: ubuntu-latest
+    name: SAST con Semgrep (manual)
+    runs-on: ubuntu-24.04
 
     container:
       image: semgrep/semgrep
 
     steps:
       - name: Descargar repositorio
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
 
       - name: Ejecutar Semgrep
         run: |
@@ -34,9 +34,9 @@ jobs:
 
       - name: Publicar reportes de Semgrep
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         with:
-          name: semgrep-reports
+          name: semgrep-reports-manual
           path: |
             semgrep-results.json
             semgrep-results.sarif
