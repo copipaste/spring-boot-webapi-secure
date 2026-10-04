@@ -236,7 +236,7 @@ def render(args, rows, details, failures):
         for title, blocking in details:
             lines += ["", f"**{title}** - {len(blocking)} bloqueante(s)"]
             for f in blocking[: args.max_listed]:
-                lines.append(f"- `{f.severity}` {f.title[:100]} - `{f.location[:110]}`")
+                lines.append(f"- `{f.severity}` {f.title[:100]} - `{f.location[:160]}`")
             if len(blocking) > args.max_listed:
                 lines.append(f"- ... y {len(blocking) - args.max_listed} mas (ver el reporte completo en los artefactos)")
     if failures:
@@ -246,15 +246,18 @@ def render(args, rows, details, failures):
     return "\n".join(lines) + "\n"
 
 
-def annotate(args, rows, details, failures):
-    """En GitHub Actions publica los motivos como anotaciones (visibles en la pagina de la ejecucion y por API)."""
-    if os.environ.get("GITHUB_ACTIONS") != "true" or not failures:
+def annotate(args, rows, details, failures, text):
+    """En GitHub Actions publica el resultado como anotaciones (visibles en la pagina de la ejecucion y por API)."""
+    if os.environ.get("GITHUB_ACTIONS") != "true":
         return
 
     def esc(value, prop=False):
         value = str(value).replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A")
         return value.replace(":", "%3A").replace(",", "%2C") if prop else value
 
+    print(f"::notice title={esc('Quality Gate - resumen', True)}::{esc(text)}")
+    if not failures:
+        return
     blocking_by_title = dict(details)
     for title, _counts, status in rows:
         if not status.startswith("FALLA"):
@@ -300,7 +303,7 @@ def main():
         with open(args.summary_file, "a", encoding="utf-8") as fh:
             fh.write(text)
     Path("quality-gate-summary.md").write_text(text, encoding="utf-8")
-    annotate(args, rows, details, failures)
+    annotate(args, rows, details, failures, text)
     return 1 if failures else 0
 
 

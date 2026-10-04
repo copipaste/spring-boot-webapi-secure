@@ -80,7 +80,10 @@ jobs:
           languages: java
           queries: security-and-quality
 
-      - uses: github/codeql-action/autobuild@2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2 # v4.38.2
+      # Build explicito en lugar de autobuild: CodeQL observa el compilador, por eso se fuerza 'clean'.
+      # (autobuild fallo de forma intermitente: usa ./mvnw y descarga Maven en cada ejecucion)
+      - name: Compilar para CodeQL
+        run: mvn -B -Dmaven.test.skip=true clean package
 
       - uses: github/codeql-action/analyze@2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2 # v4.38.2
         with:
@@ -338,7 +341,7 @@ jobs:
         env:
           NEEDS_JSON: ${{ toJSON(needs) }}
           ODC_EXPECTED: ${{ inputs.run-odc }}
-        run: python3 .github/scripts/quality_gate.py --reports reports --fail-on HIGH
+        run: python3 .github/scripts/quality_gate.py --reports reports --fail-on HIGH --max-listed 30
 
       - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         if: always()
