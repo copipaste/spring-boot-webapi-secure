@@ -1,0 +1,5 @@
+target/classes
+target/test-classes
+.git
+.idea
+*.iml

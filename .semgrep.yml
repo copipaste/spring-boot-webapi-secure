@@ -1,0 +1,44 @@
+rules:
+  - id: lab-java-sql-concatenation
+    message: Entrada HTTP concatenada en una consulta SQL.
+    severity: ERROR
+    languages: [java]
+    patterns:
+      - pattern: $SQL = $PREFIX + $INPUT + $SUFFIX;
+      - pattern-inside: |
+          public $RET $METHOD(..., @RequestParam(...) $TYPE $INPUT, ...) {
+            ...
+          }
+
+  - id: lab-html-without-output-encoding
+    message: Contenido controlado por el usuario se incorpora directamente en HTML.
+    severity: ERROR
+    languages: [java]
+    pattern: ResponseEntity.ok($PREFIX + $INPUT + $SUFFIX)
+
+  - id: lab-sensitive-data-in-log
+    message: Posible dato sensible escrito en el log.
+    severity: WARNING
+    languages: [java]
+    pattern: $LOGGER.info($MESSAGE, ..., $PASSWORD, ...)
+    metavariable-regex:
+      metavariable: $PASSWORD
+      regex: (?i).*password.*
+
+  - id: lab-hardcoded-secret
+    message: Secreto almacenado directamente en el codigo fuente.
+    severity: ERROR
+    languages: [java]
+    pattern-regex: '(?i)(password|secret|token)\s*=\s*"[^\"]+"'
+
+  - id: lab-permit-all
+    message: Todos los endpoints se encuentran accesibles sin autenticacion.
+    severity: ERROR
+    languages: [java]
+    pattern: $AUTH.anyRequest().permitAll()
+
+  - id: lab-csrf-disabled
+    message: La proteccion CSRF esta deshabilitada.
+    severity: WARNING
+    languages: [java]
+    pattern: $CSRF.disable()
