@@ -124,14 +124,15 @@ jobs:
           cache-from: type=gha
 
   # ==================================================================
-  # CD 2: desplegar en EC2 por AWS Systems Manager (sin SSH, credenciales temporales por OIDC)
-  # Se omite hasta que definas las variables del repositorio AWS_ROLE_ARN y EC2_INSTANCE_ID
-  # (ver INFORME-LAB3.md, seccion 8).
+  # CD 2: desplegar en EC2 por SSH con una llave de despliegue DEDICADA.
+  # En el servidor esa llave solo puede ejecutar /usr/local/bin/deploy-webapi (command= + restrict),
+  # que valida la imagen (solo este repo, por digest), el contenedor y el puerto.
+  # Se omite hasta que definas la variable del repositorio EC2_HOST (ver README e INFORME-LAB3.md, seccion 8).
   # ==================================================================
   deploy:
     name: Deploy to EC2
     needs: docker-build-scan-push
-    if: ${{ vars.EC2_INSTANCE_ID != '' && vars.AWS_ROLE_ARN != '' }}
+    if: ${{ vars.EC2_HOST != '' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     concurrency:
@@ -141,59 +142,40 @@ jobs:
     environment:
       name: ${{ github.ref_name == 'main' && 'production' || 'staging' }}
     permissions:
-      id-token: write          # token OIDC para asumir el rol de AWS
       contents: read
     env:
-      AWS_REGION: ${{ vars.AWS_REGION || 'us-east-1' }}
-      INSTANCE_ID: ${{ vars.EC2_INSTANCE_ID }}
+      EC2_HOST: ${{ vars.EC2_HOST }}
+      EC2_USER: ${{ vars.EC2_USER || 'deploy' }}
       DIGEST: ${{ needs.docker-build-scan-push.outputs.image-digest }}
       APP_PORT: ${{ github.ref_name == 'main' && '8080' || '8081' }}
       CONTAINER: ${{ github.ref_name == 'main' && 'webapi-prod' || 'webapi-staging' }}
 
     steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
-
-      - name: Credenciales temporales de AWS (OIDC)
-        uses: aws-actions/configure-aws-credentials@61815dcd50bd041e203e49132bacad1fd04d2708 # v5.1.1
-        with:
-          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
-          aws-region: ${{ env.AWS_REGION }}
-
-      - name: Desplegar con SSM Run Command
+      # La llave privada vive solo en el secret EC2_SSH_KEY; la huella del servidor se fija con
+      # la variable EC2_KNOWN_HOSTS (salida de: ssh-keyscan -t ed25519 <host>) para evitar MITM.
+      - name: Preparar SSH (llave de despliegue + host key fijada)
+        env:
+          SSH_KEY: ${{ secrets.EC2_SSH_KEY }}
+          KNOWN_HOSTS: ${{ vars.EC2_KNOWN_HOSTS }}
         run: |
+          set -euo pipefail
+          [ -n "$SSH_KEY" ] || { echo "::error::Falta el secret EC2_SSH_KEY"; exit 1; }
+          [ -n "$KNOWN_HOSTS" ] || { echo "::error::Falta la variable EC2_KNOWN_HOSTS"; exit 1; }
+          umask 077
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$SSH_KEY" | tr -d '\r' > ~/.ssh/deploy_key
+          printf '%s\n' "$KNOWN_HOSTS" | tr -d '\r' > ~/.ssh/known_hosts
+
+      - name: Desplegar por SSH
+        run: |
+          set -euo pipefail
           IMAGE="ghcr.io/${GITHUB_REPOSITORY,,}@${DIGEST}"
           echo "Imagen : $IMAGE"
-          echo "Destino: $CONTAINER, puerto $APP_PORT, instancia $INSTANCE_ID"
+          echo "Destino: $CONTAINER, puerto $APP_PORT, servidor $EC2_HOST"
+          ssh -i ~/.ssh/deploy_key \
+            -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=20 \
+            "${EC2_USER}@${EC2_HOST}" "${IMAGE} ${CONTAINER} ${APP_PORT}"
 
-          # El script remoto vive en deploy/remote-deploy.sh; las variables viajan en la primera linea
-          PREFIX="export IMAGE='${IMAGE}' CONTAINER='${CONTAINER}' APP_PORT='${APP_PORT}'"
-          jq -n --arg prefix "$PREFIX" --rawfile script deploy/remote-deploy.sh \
-            '{commands: [$prefix, $script]}' > ssm-params.json
-
-          CMD_ID=$(aws ssm send-command \
-            --instance-ids "$INSTANCE_ID" \
-            --document-name "AWS-RunShellScript" \
-            --comment "Deploy ${GITHUB_SHA::7} -> ${CONTAINER}" \
-            --parameters file://ssm-params.json \
-            --query "Command.CommandId" --output text)
-          echo "CommandId: $CMD_ID"
-
-          # 'aws ssm wait' se rinde a los ~100 s; se espera hasta 7,5 min con un bucle propio
-          STATUS="Pending"
-          for i in $(seq 1 90); do
-            STATUS=$(aws ssm get-command-invocation --command-id "$CMD_ID" --instance-id "$INSTANCE_ID" \
-              --query Status --output text 2>/dev/null || echo "Pending")
-            case "$STATUS" in Success|Failed|Cancelled|TimedOut) break ;; esac
-            sleep 5
-          done
-
-          echo "---------- salida del despliegue ----------"
-          aws ssm get-command-invocation --command-id "$CMD_ID" --instance-id "$INSTANCE_ID" \
-            --query StandardOutputContent --output text
-          aws ssm get-command-invocation --command-id "$CMD_ID" --instance-id "$INSTANCE_ID" \
-            --query StandardErrorContent --output text >&2 || true
-          echo "-------------------------------------------"
-          if [ "$STATUS" != "Success" ]; then
-            echo "::error::El despliegue termino con estado $STATUS"
-            exit 1
-          fi
+      - name: Borrar la llave del runner
+        if: always()
+        run: rm -f ~/.ssh/deploy_key

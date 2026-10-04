@@ -89,4 +89,8 @@ python .github\scripts\quality_gate.py --reports target --no-needs --allow-missi
 | Nombre | Tipo | Para qué |
 |---|---|---|
 | `NVD_API_KEY` | Secret | Descarga de la base NVD (nightly). Pídela gratis en https://nvd.nist.gov/developers/request-an-api-key |
-| `AWS_ROLE_ARN`, `EC2_INSTANCE_ID`, `AWS_REGION` | Variables | Despliegue en EC2 por SSM con OIDC (sin claves en GitHub). Si no existen, el job de deploy se omite |
+| `EC2_SSH_KEY` | Secret | Llave **privada de despliegue** (dedicada, no tu llave personal). En el servidor solo puede ejecutar `deploy-webapi` |
+| `EC2_HOST`, `EC2_USER` (opcional, por defecto `deploy`), `EC2_KNOWN_HOSTS` | Variables | Servidor EC2 y su huella SSH (salida de `ssh-keyscan -t ed25519 <host>`). Si `EC2_HOST` no existe, el job de deploy se omite |
+
+El servidor se prepara una sola vez con `infra/ec2-bootstrap.sh` (Docker, usuario `deploy`, llave con `command=`,
+sshd endurecido). `deploy/remote-deploy.sh` es el script que se instala como `deploy-webapi`.
