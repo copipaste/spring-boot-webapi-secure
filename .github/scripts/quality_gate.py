@@ -246,6 +246,30 @@ def render(args, rows, details, failures):
     return "\n".join(lines) + "\n"
 
 
+def annotate(args, rows, details, failures):
+    """En GitHub Actions publica los motivos como anotaciones (visibles en la pagina de la ejecucion y por API)."""
+    if os.environ.get("GITHUB_ACTIONS") != "true" or not failures:
+        return
+
+    def esc(value, prop=False):
+        value = str(value).replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A")
+        return value.replace(":", "%3A").replace(",", "%2C") if prop else value
+
+    blocking_by_title = dict(details)
+    for title, _counts, status in rows:
+        if not status.startswith("FALLA"):
+            continue
+        top = ""
+        if title in blocking_by_title:
+            top = " | Principales: " + "; ".join(
+                f"{f.severity} {f.title[:60]} @ {f.location[:70]}" for f in blocking_by_title[title][:3])
+        print(f"::error title={esc('Quality Gate - ' + title, True)}::{esc(status + top)}")
+    base = Path(args.reports)
+    files = sorted(str(p.relative_to(base)).replace("\\", "/") for p in base.rglob("*") if p.is_file()) if base.exists() else []
+    print(f"::notice title={esc('Quality Gate - reportes encontrados (' + str(len(files)) + ')', True)}::"
+          f"{esc(', '.join(files[:40]) or '(ninguno: la carpeta no existe o esta vacia)')}")
+
+
 def main():
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -276,6 +300,7 @@ def main():
         with open(args.summary_file, "a", encoding="utf-8") as fh:
             fh.write(text)
     Path("quality-gate-summary.md").write_text(text, encoding="utf-8")
+    annotate(args, rows, details, failures)
     return 1 if failures else 0
 
 
