@@ -34,6 +34,20 @@
 | 1 | `commons-text` 1.15.0 y Spring Boot 3.5.16 (Tomcat 10.1.55) | **8**: 3 CRITICAL en `tomcat-embed-core` 10.1.55 (CVE-2026-65182, -65905, -68525; corregidos en 10.1.58) y 5 HIGH en `jackson-core`/`jackson-databind` 2.21.4 (corregidos en 2.21.7) |
 | 2 | `tomcat.version` = 10.1.60 y `jackson-bom.version` = 2.21.7 | **0** (quedan 2 MEDIUM, listados en el reporte sin bloquear) |
 
+## Segundo escáner: Dependency-Check (nightly)
+
+Trivy y Dependency-Check usan bases y fuentes distintas, así que sus resultados difieren (lo anticipa el documento de apoyo 02).
+
+| Paso | Dependency-Check | Quality Gate |
+|---|---|---|
+| Rama vulnerable, ejecución **local** | 83 vulnerabilidades: 20 CRITICAL, 26 HIGH, 35 MEDIUM, 2 LOW (incluye `commons-text` 1.9, CVE-2022-42889) | RECHAZADO |
+| `main` remediada, [nightly 37246425913](https://github.com/copipaste/spring-boot-webapi-secure/actions/runs/37246425913) | **15** HIGH/CRITICAL en Spring Framework 6.2.19 y Spring Security 6.5.11 (Trivy sobre el SBOM: 0) | RECHAZADO |
+| `main` + riesgo aceptado con caducidad | 0 HIGH/CRITICAL activos, 10 MEDIUM, 1 LOW; **15 suprimidos** hasta 2026-12-31 | APROBADO |
+
+Esos 15 CVE no tienen corrección de código abierto en las líneas 6.x (`6.2.20` y `6.5.12` son solo para clientes con soporte comercial; las versiones abiertas
+son Spring Framework 7.0.9 y Spring Security 7.0.7/7.1.1, es decir, Spring Boot 4.x) y afectan a funciones que la aplicación no usa.
+El análisis por CVE está en [`riesgos-aceptados.md`](riesgos-aceptados.md); la supresión es explícita, acotada a esas dos versiones y **caduca el 2026-12-31**.
+
 ## Análisis
 
 1. **¿La dependencia era directa o transitiva?** `commons-text` es **directa** (declarada en `pom.xml`). `tomcat-embed-core` y `jackson-*` son **transitivas**: las incorporan `spring-boot-starter-web` y su versión la administra el BOM de Spring Boot.
