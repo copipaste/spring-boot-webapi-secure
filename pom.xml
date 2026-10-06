@@ -91,20 +91,19 @@
             <plugin>
                 <groupId>org.owasp</groupId>
                 <artifactId>dependency-check-maven</artifactId>
-                <version>11.1.1</version>
+                <version>13.0.0</version>
                 <configuration>
                     <failBuildOnCVSS>${odc.failBuildOnCVSS}</failBuildOnCVSS>
                     <!-- La clave NVD no se guarda en el repo: se lee de la variable de entorno NVD_API_KEY
                          (GitHub Secret en el pipeline; $env:NVD_API_KEY en tu PC). -->
                     <nvdApiKeyEnvironmentVariable>NVD_API_KEY</nvdApiKeyEnvironmentVariable>
-                    <!-- JSON: lo lee el Quality Gate. HTML: para humanos y capturas. -->
+                    <ossIndexAnalyzerEnabled>false</ossIndexAnalyzerEnabled>
+                    <!-- JSON: Quality Gate. XML: parser de DefectDojo. HTML: humanos. Sin supresiones: estado original. -->
                     <formats>
                         <format>HTML</format>
                         <format>JSON</format>
+                        <format>XML</format>
                     </formats>
-                    <suppressionFiles>
-                        <suppressionFile>dependency-check-suppressions.xml</suppressionFile>
-                    </suppressionFiles>
                 </configuration>
             </plugin>
             <!-- SpotBugs -->
