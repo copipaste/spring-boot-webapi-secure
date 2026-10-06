@@ -18,3 +18,7 @@ ssm-params.json
 id_rsa*
 id_ed25519*
 lab3_gha_deploy*
+
+# Python
+__pycache__/
+*.pyc

@@ -1,0 +1,58 @@
+# Riesgos aceptados para Trivy (imagen y SBOM). Es el mismo registro que dependency-check-suppressions.xml
+# (OWASP Dependency-Check), pero en el formato de Trivy. El analisis por CVE esta en
+# evidencias/sca/riesgos-aceptados.md.
+#
+# Condiciones (iguales a las de Dependency-Check):
+#   * Solo estos 15 CVE de Spring Framework 6.2.19 y Spring Security 6.5.11: no existe correccion de codigo abierto
+#     para las lineas 6.x (6.2.20 y 6.5.12 son solo para clientes con soporte comercial; las versiones abiertas son
+#     Spring Framework 7.0.9 y Spring Security 7.0.7/7.1.1, es decir Spring Boot 4.x).
+#   * La aplicacion no usa ninguna de las funciones afectadas (solo @RestController, sin vistas, WebFlux, RSocket,
+#     SSE, SpEL con entrada de usuario, LDAP ni WebAuthn).
+#   * Caducan el 2026-12-31: despues Trivy vuelve a reportarlos y el Quality Gate vuelve a bloquear.
+#   * No se baja el umbral del gate (HIGH/CRITICAL siguen bloqueando); el resto de hallazgos no se ve afectado.
+vulnerabilities:
+  - id: CVE-2026-47884
+    statement: "Aceptado hasta 2026-12-31. XsltView en Spring MVC: la app no tiene vistas ni XSLT, solo @RestController."
+    expired_at: 2026-12-31
+  - id: CVE-2026-47885
+    statement: "Aceptado hasta 2026-12-31. Solo WebFlux (PartEventHttpMessageReader): la app no usa WebFlux."
+    expired_at: 2026-12-31
+  - id: CVE-2026-47886
+    statement: "Aceptado hasta 2026-12-31. SpEL con expresiones suministradas por el usuario: la app no evalua SpEL de usuario."
+    expired_at: 2026-12-31
+  - id: CVE-2026-47888
+    statement: "Aceptado hasta 2026-12-31. Solo RSocket: la app no usa RSocket."
+    expired_at: 2026-12-31
+  - id: CVE-2026-47889
+    statement: "Aceptado hasta 2026-12-31. Solo WebFlux sobre Jetty 12: la app usa Spring MVC sobre Tomcat."
+    expired_at: 2026-12-31
+  - id: CVE-2026-47890
+    statement: "Aceptado hasta 2026-12-31. Solo SSE con view fragments: la app no usa SSE ni vistas."
+    expired_at: 2026-12-31
+  - id: CVE-2026-47891
+    statement: "Aceptado hasta 2026-12-31. Solo WebFlux con el procesador XML Aalto: la app no usa WebFlux ni Aalto."
+    expired_at: 2026-12-31
+  - id: CVE-2026-47892
+    statement: "Aceptado hasta 2026-12-31. Solo functional endpoints con DispatcherServlet: la app no usa endpoints funcionales."
+    expired_at: 2026-12-31
+  - id: CVE-2026-47893
+    statement: "Aceptado hasta 2026-12-31. Solo WebFlux con WebSocket: la app no usa WebFlux ni WebSocket."
+    expired_at: 2026-12-31
+  - id: CVE-2026-59282
+    statement: "Aceptado hasta 2026-12-31. Solo data binding con property paths del usuario: los controladores usan @RequestParam/@PathVariable/@RequestBody Map."
+    expired_at: 2026-12-31
+  - id: CVE-2026-59283
+    statement: "Aceptado hasta 2026-12-31. Solo SpEL con SimpleEvaluationContext y compilador activo: la app no evalua SpEL."
+    expired_at: 2026-12-31
+  - id: CVE-2026-59313
+    statement: "Aceptado hasta 2026-12-31. Solo functional web framework con SSE: la app no usa endpoints funcionales ni SSE."
+    expired_at: 2026-12-31
+  - id: CVE-2026-41707
+    statement: "Aceptado hasta 2026-12-31. Solo DPoPProofJwtDecoderFactory (OAuth2/DPoP): la app autentica con HTTP Basic."
+    expired_at: 2026-12-31
+  - id: CVE-2026-47841
+    statement: "Aceptado hasta 2026-12-31. Solo WebAuthn con almacen de sesion distribuido: la app no usa WebAuthn."
+    expired_at: 2026-12-31
+  - id: CVE-2026-59270
+    statement: "Aceptado hasta 2026-12-31. Solo UnboundIdContainer (LDAP embebido): no hay LDAP ni UnboundID en las dependencias."
+    expired_at: 2026-12-31

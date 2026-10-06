@@ -7,6 +7,11 @@ on:
   push:
     branches: [ main, develop ]
   workflow_dispatch:
+    inputs:
+      deploy:
+        description: Desplegar en EC2 despues de publicar (desmarcalo para probar solo CI, escaneo y publicacion)
+        type: boolean
+        default: true
 
 # Sin cancelar: un push nuevo no debe interrumpir un despliegue a medias
 concurrency:
@@ -84,6 +89,7 @@ jobs:
           cache-to: type=gha,mode=max
 
       # Trivy recibe UNA sola referencia (tags[0]); steps.meta.outputs.tags trae varias lineas
+      # trivyignores: riesgos aceptados con caducidad (evidencias/sca/riesgos-aceptados.md), igual que en el CI
       - name: Trivy - reporte SARIF de la imagen (no bloquea)
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
@@ -93,6 +99,7 @@ jobs:
           output: trivy-results.sarif
           severity: CRITICAL,HIGH
           ignore-unfixed: true
+          trivyignores: .trivyignore.yaml
           exit-code: '0'
 
       - name: Subir resultados de Trivy a Code scanning
@@ -102,6 +109,29 @@ jobs:
           sarif_file: trivy-results.sarif
           category: trivy-image
 
+      # Reporte JSON completo de la imagen que se va a publicar (evidencia y carga en DefectDojo)
+      - name: Trivy - reporte JSON de la imagen publicada (trivy-report.json)
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: ${{ fromJSON(steps.meta.outputs.json).tags[0] }}
+          version: v0.74.0
+          format: json
+          output: trivy-report.json
+          scanners: vuln,secret
+          trivyignores: .trivyignore.yaml
+          exit-code: '0'
+
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        if: always()
+        with:
+          name: trivy-image-release
+          path: |
+            trivy-report.json
+            trivy-results.sarif
+          if-no-files-found: error
+          retention-days: 30
+          overwrite: true
+
       - name: Trivy - gate de la imagen (CRITICAL y HIGH bloquean)
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
@@ -110,6 +140,7 @@ jobs:
           format: table
           severity: CRITICAL,HIGH
           ignore-unfixed: true
+          trivyignores: .trivyignore.yaml
           exit-code: '1'
 
       - name: Publicar imagen en GHCR
@@ -123,6 +154,24 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
 
+      # Como se obtiene la version construida: queda en el resumen de la ejecucion
+      - name: Resumen de publicacion
+        env:
+          DIGEST: ${{ steps.push.outputs.digest }}
+          TAGS: ${{ steps.meta.outputs.tags }}
+        run: |
+          image="${REGISTRY}/${GITHUB_REPOSITORY,,}"
+          {
+            echo "## Imagen publicada en GHCR"
+            echo
+            echo "- Referencia inmutable: \`${image}@${DIGEST}\`"
+            echo "- Etiquetas: $(echo "$TAGS" | sed 's/^[^:]*://' | paste -sd ' ' -)"
+            echo "- Commit: \`${GITHUB_SHA}\`"
+            echo
+            echo "Para obtenerla en cualquier equipo: \`docker pull ${image}@${DIGEST}\`."
+            echo "El job de despliegue usa exactamente esta referencia (por digest, no por etiqueta)."
+          } >> "$GITHUB_STEP_SUMMARY"
+
   # ==================================================================
   # CD 2: desplegar en EC2 por SSH con una llave de despliegue DEDICADA.
   # En el servidor esa llave solo puede ejecutar /usr/local/bin/deploy-webapi (command= + restrict),
@@ -132,7 +181,7 @@ jobs:
   deploy:
     name: Deploy to EC2
     needs: docker-build-scan-push
-    if: ${{ vars.EC2_HOST != '' }}
+    if: ${{ vars.EC2_HOST != '' && (github.event_name != 'workflow_dispatch' || inputs.deploy) }}
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     concurrency:
