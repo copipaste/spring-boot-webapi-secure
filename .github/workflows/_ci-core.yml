@@ -56,7 +56,7 @@ jobs:
       - name: Build, pruebas y cobertura
         run: mvn -B clean verify
 
-      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: always()
         with:
           name: test-and-coverage-reports
@@ -103,7 +103,7 @@ jobs:
           # Los PR de Dependabot reciben un token de solo lectura: no pueden subir a Code scanning
           upload: ${{ github.actor == 'dependabot[bot]' && 'never' || 'always' }}
 
-      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: always()
         with:
           name: codeql-sarif
@@ -138,7 +138,7 @@ jobs:
             --sarif-output=semgrep-out/semgrep-report.sarif \
             src/main/java
 
-      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: always()
         with:
           name: semgrep-reports
@@ -167,7 +167,7 @@ jobs:
       - name: Ejecutar SpotBugs + FindSecBugs (reportes XML y JSON)
         run: mvn -B clean compile com.github.spotbugs:spotbugs-maven-plugin:spotbugs -Dspotbugs.sarifOutput=true
 
-      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: always()
         with:
           name: spotbugs-reports
@@ -234,7 +234,7 @@ jobs:
             /work/bom.json
           cat target/sca-table.txt
 
-      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: always()
         with:
           name: sca-sbom
@@ -287,7 +287,7 @@ jobs:
           NVD_API_KEY: ${{ secrets.NVD_API_KEY }}
         run: mvn -B org.owasp:dependency-check-maven:check -Dodc.failBuildOnCVSS=11
 
-      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: always()
         with:
           name: dependency-check-report
@@ -358,7 +358,7 @@ jobs:
             webapi:ci
           cat image-scan-out/trivy-table.txt
 
-      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: always()
         with:
           name: trivy-image-report
@@ -439,7 +439,7 @@ jobs:
           ODC_EXPECTED: ${{ inputs.run-odc }}
         run: python3 .github/scripts/quality_gate.py --reports reports --fail-on HIGH --max-listed 30
 
-      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: always()
         with:
           name: quality-gate-summary
