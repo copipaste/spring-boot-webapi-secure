@@ -56,17 +56,23 @@ def send(url, token, fields, path):
         return json.loads(response.read().decode("utf-8"))
 
 
+def total(counts):
+    """La API devuelve contadores por severidad y un 'total' que a su vez es un diccionario con 'total'."""
+    value = (counts or {}).get("total")
+    return value.get("total", 0) if isinstance(value, dict) else (value or 0)
+
+
 def summarize(result):
     stats = result.get("statistics") or {}
     delta = stats.get("delta") or {}
     parts = []
-    for key in ("created", "closed", "reactivated", "left untouched"):
-        counts = delta.get(key) or {}
-        if counts:
-            parts.append(f"{key}: {counts.get('total', sum(v for v in counts.values() if isinstance(v, int)))}")
+    if delta:
+        for key, label in (("created", "nuevos"), ("closed", "cerrados"), ("reactivated", "reactivados"),
+                           ("untouched", "sin cambios")):
+            parts.append(f"{label}: {total(delta.get(key))}")
     after = (stats.get("after") or {}).get("total") or {}
     if isinstance(after, dict) and after:
-        parts.append(f"activos tras la carga: {after.get('active', '?')}")
+        parts.append(f"activos ahora: {after.get('active', '?')}")
     return ", ".join(parts) or "sin estadisticas"
 
 
