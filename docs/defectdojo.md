@@ -71,6 +71,11 @@ número de ejecución de GitHub Actions, que sirven para identificar la evidenci
 Un reporte sin parser compatible (por ejemplo, de una herramienta que la versión de DefectDojo no soporte) se adjunta
 al informe explicando la limitación.
 
+**Dependency-Check y las supresiones.** El parser importa también las vulnerabilidades suprimidas en
+`dependency-check-suppressions.xml` (los 15 CVE de Spring aceptados): las marca con la etiqueta `suppressed` y copia la
+justificación del archivo en el campo *Mitigation*. Conviene registrarlas en DefectDojo como **Risk Accepted** para que
+queden diferenciadas de los hallazgos activos.
+
 ## 4. Importar los reportes
 
 **Descargar los artifacts** de una ejecución (cada uno es un ZIP; con `gh` se descargan todos):
@@ -81,7 +86,7 @@ gh run download <id-de-la-ejecucion> --dir reports
 ```
 
 **A mano (interfaz):** Product > Engagement > *Add Tests* / **Import Scan Results** > elegir el *Scan type* de la tabla,
-seleccionar el archivo y *Import*. Para cargar de nuevo el mismo reporte actualizado usa **Re-Import** dentro del Test.
+seleccionar el archivo y *Import*. Para cargar de nuevo el mismo reporte actualizado, abre el Test y usa **Re-Upload Scan**.
 
 **Por API (opcional):** copia tu clave desde el menú del usuario > *API v2 Key* y ejecuta:
 
