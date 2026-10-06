@@ -2,8 +2,8 @@
 """Quality Gate de seguridad.
 
 Lee los reportes que producen los escaneres (Semgrep, CodeQL, SpotBugs + FindSecBugs,
-Trivy sobre el SBOM y OWASP Dependency-Check), los clasifica por severidad y falla
-(exit code 1) si:
+Trivy sobre el SBOM, Trivy sobre la imagen del proyecto y
+OWASP Dependency-Check), los clasifica por severidad y falla (exit code 1) si:
 
   * algun hallazgo alcanza el umbral (por defecto HIGH, que incluye CRITICAL), o
   * un job requerido termino en failure / cancelled / skipped, o
@@ -58,10 +58,13 @@ def normalize_severity(value):
     return value if value in RANK else None
 
 
-def find_report(root, filename):
-    """Busca el archivo en cualquier subcarpeta (download-artifact crea una por artefacto)."""
-    matches = sorted(Path(root).rglob(filename))
-    return matches[0] if matches else None
+def find_report(root, filenames):
+    """Busca el primer archivo de la lista en cualquier subcarpeta (download-artifact crea una por artefacto)."""
+    for filename in filenames:
+        matches = sorted(Path(root).rglob(filename))
+        if matches:
+            return matches[0]
+    return None
 
 
 # --------------------------------------------------------------------------- parsers
@@ -131,14 +134,22 @@ def parse_spotbugs(path):
     return out
 
 
-def parse_trivy(path):
+def parse_trivy(path, ignore_unfixed=False):
+    """Reporte JSON de Trivy (sbom, image, fs). Con ignore_unfixed se omiten las vulnerabilidades sin version
+    corregida (mismo criterio que 'ignore-unfixed' del escaneo de la imagen en el CD: no se puede arreglar)."""
     out = []
     for res in load_json(path).get("Results") or []:
+        target = res.get("Target", "")
         for v in res.get("Vulnerabilities") or []:
-            sev = normalize_severity(v.get("Severity")) or "LOW"
             fixed = v.get("FixedVersion")
+            if ignore_unfixed and not fixed:
+                continue
+            sev = normalize_severity(v.get("Severity")) or "LOW"
             loc = f'{v.get("PkgName")}@{v.get("InstalledVersion")} ' + (f"(fix: {fixed})" if fixed else "(sin fix)")
             out.append(Finding(sev, v.get("VulnerabilityID", "?"), loc))
+        for s in res.get("Secrets") or []:  # secretos dentro de la imagen: siempre cuentan
+            sev = normalize_severity(s.get("Severity")) or "HIGH"
+            out.append(Finding(sev, f'secreto: {s.get("RuleID", "?")}', f'{target}:{s.get("StartLine", "")}'))
     return out
 
 
@@ -154,13 +165,16 @@ def parse_odc(path):
     return out
 
 
-# id del job, titulo, archivo de reporte, parser, (aplica solo si ODC esperado)
+# id del job, titulo, archivos de reporte aceptados (se usa el primero que exista), parser,
+# (aplica solo si ODC esperado)
 TOOLS = [
-    ("sast-semgrep", "Semgrep (SAST)", "semgrep-results.json", parse_semgrep, False),
-    ("sast-codeql", "CodeQL (SAST)", "java.sarif", parse_sarif, False),
-    ("static-analysis", "SpotBugs + FindSecBugs", "spotbugsXml.xml", parse_spotbugs, False),
-    ("sca-sbom", "Trivy sobre SBOM (SCA)", "sca-report.json", parse_trivy, False),
-    ("sca-dependency-check", "OWASP Dependency-Check (SCA)", "dependency-check-report.json", parse_odc, True),
+    ("sast-semgrep", "Semgrep (SAST)", ("semgrep-report.json", "semgrep-results.json"), parse_semgrep, False),
+    ("sast-codeql", "CodeQL (SAST)", ("java.sarif",), parse_sarif, False),
+    ("static-analysis", "SpotBugs + FindSecBugs", ("spotbugsXml.xml",), parse_spotbugs, False),
+    ("sca-sbom", "Trivy sobre SBOM (SCA)", ("sca-report.json",), parse_trivy, False),
+    ("image-scan", "Trivy sobre la imagen del proyecto",
+     ("trivy-report.json",), lambda path: parse_trivy(path, ignore_unfixed=True), False),
+    ("sca-dependency-check", "OWASP Dependency-Check (SCA)", ("dependency-check-report.json",), parse_odc, True),
 ]
 PLAIN_JOBS = [
     ("build-and-test", "Build & Test (JUnit + JaCoCo)"),
@@ -171,7 +185,7 @@ PLAIN_JOBS = [
 # --------------------------------------------------------------------------- evaluacion
 def evaluate(args, needs):
     threshold = RANK[args.fail_on]
-    rows, details, failures = [], [], []
+    rows, details, failures, inventory = [], [], [], []
 
     def job_state(job):
         return None if needs is None else (needs.get(job) or {}).get("result", "missing")
@@ -184,7 +198,7 @@ def evaluate(args, needs):
             rows.append((title, None, f"FALLA (job: {state})"))
             failures.append(f"{title}: el job termino en '{state}'")
 
-    for job, title, filename, parser, odc_only in TOOLS:
+    for job, title, filenames, parser, odc_only in TOOLS:
         if odc_only and not args.odc_expected:
             rows.append((title, None, "no aplica (solo nightly)"))
             continue
@@ -192,15 +206,16 @@ def evaluate(args, needs):
         problems = []
         if state is not None and state != "success":
             problems.append(f"job termino en '{state}'")
-        report = find_report(args.reports, filename)
+        report = find_report(args.reports, filenames)
         counts, findings = Counter(), []
         if report is None:
             if state in (None, "success") and not args.allow_missing:
-                problems.append(f"no se encontro el reporte '{filename}'")
+                problems.append(f"no se encontro el reporte '{filenames[0]}'")
             elif state in (None, "success"):
                 rows.append((title, None, "sin reporte (omitido)"))
                 continue
         else:
+            inventory.append((title, report.name, report.stat().st_size))
             try:
                 findings = parser(report)
             except Exception as exc:  # reporte corrupto = no se puede confiar en el resultado
@@ -216,10 +231,10 @@ def evaluate(args, needs):
         if blocking:
             blocking.sort(key=lambda f: -RANK[f.severity])
             details.append((title, blocking))
-    return rows, details, failures
+    return rows, details, failures, inventory
 
 
-def render(args, rows, details, failures):
+def render(args, rows, details, failures, inventory=()):
     ok = not failures
     lines = ["## Quality Gate", "",
              f"**Resultado: {'APROBADO' if ok else 'RECHAZADO'}** - umbral: {args.fail_on} "
@@ -241,6 +256,10 @@ def render(args, rows, details, failures):
                 lines.append(f"- ... y {len(blocking) - args.max_listed} mas (ver el reporte completo en los artefactos)")
     if failures:
         lines += ["", "### Motivos del rechazo"] + [f"- {m}" for m in failures]
+    if inventory:
+        lines += ["", "### Reportes analizados (descargables como artifacts de esta ejecucion)", "",
+                  "| Control | Archivo | Tamano |", "|---|---|--:|"]
+        lines += [f"| {title} | `{name}` | {size / 1024:.0f} KB |" for title, name, size in inventory]
     lines += ["", "_Los hallazgos MEDIUM/LOW se listan en los reportes pero no bloquean. "
               "Las excepciones aceptadas se documentan (supresiones, `# nosemgrep`), no se baja el umbral._"]
     return "\n".join(lines) + "\n"
@@ -296,8 +315,8 @@ def main():
             p.error("falta NEEDS_JSON / --needs-json (o usa --no-needs en local)")
         needs = json.loads(args.needs_json)
 
-    rows, details, failures = evaluate(args, needs)
-    text = render(args, rows, details, failures)
+    rows, details, failures, inventory = evaluate(args, needs)
+    text = render(args, rows, details, failures, inventory)
     print(text)
     if args.summary_file:
         with open(args.summary_file, "a", encoding="utf-8") as fh:

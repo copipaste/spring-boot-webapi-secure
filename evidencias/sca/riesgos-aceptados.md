@@ -62,3 +62,18 @@ Avisos: `https://spring.io/security/cve-2026-<número>` (uno por CVE). Se leyero
 - **Solución de fondo:** migrar a Spring Boot 4.x (Spring Framework 7.0.9, Spring Security 7.1.1). Es un salto de versión mayor: el PR
   #12 de Dependabot lo propone y hay que adaptar dependencias de prueba y las sobrescrituras de versiones del `pom.xml` (Tomcat 11, Jackson 3).
   Cuando se haga, se elimina esta excepción.
+
+## Mismo registro para Trivy (Laboratorio Final)
+
+Al escanear la imagen del proyecto, Trivy también reporta `CVE-2026-47884` (CRITICAL) en `spring-webmvc 6.2.19` (corrección solo
+en Spring Framework 7.0.9), que es uno de los 15 CVE de esta tabla. Para que el Quality Gate no bloquee por un riesgo ya
+analizado, los mismos 15 CVE están en `.trivyignore.yaml`, con la misma caducidad (`expired_at: 2026-12-31`) y la misma justificación.
+Se aplica al análisis de la imagen, al de SBOM y al escaneo del CD; solo oculta esos 15 identificadores.
+
+Verificación (2026-10-06, imagen `webapi` construida con este repositorio, Trivy 0.74.0):
+
+| Escaneo | Sin `.trivyignore.yaml` | Con `.trivyignore.yaml` |
+|---|---|---|
+| CRITICAL | 1 (`CVE-2026-47884`) | 0 |
+| MEDIUM | 2 (`commons-lang3`, `log4j-api`; corregidos subiendo a 3.18.0 y 2.25.5) | 0 |
+| UNKNOWN | 1 (`libpng` de la imagen base Alpine, con corrección en `1.6.59-r0`) | 1 (pendiente de revisar) |

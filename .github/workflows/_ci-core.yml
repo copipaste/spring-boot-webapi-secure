@@ -6,6 +6,14 @@ name: CI Core (reutilizable)
 #   - ci-sec-nightly.yml  (nightly + SCA con Dependency-Check)
 # Todas las acciones estan fijadas por SHA de commit (el numero de version va en el comentario);
 # Dependabot (github-actions) propone las actualizaciones.
+#
+# Controles y reportes JSON (cada job los sube como artifact aunque el pipeline se bloquee):
+#   SAST         Semgrep               semgrep-report.json      (artifact semgrep-reports)
+#   SAST         CodeQL                java.sarif (JSON/SARIF)  (artifact codeql-sarif)
+#   Estatico     SpotBugs+FindSecBugs  spotbugsSarif.json       (artifact spotbugs-reports)
+#   SCA          Trivy sobre SBOM      sca-report.json          (artifact sca-sbom)
+#   SCA          Dependency-Check      dependency-check-report.json (solo nightly)
+#   Imagen       Trivy sobre la imagen trivy-report.json        (artifact trivy-image-report)
 
 on:
   workflow_call:
@@ -24,6 +32,9 @@ permissions:
 env:
   JAVA_VERSION: '21'
   MAVEN_OPTS: '-Xmx2g'
+  # Trivy en contenedor, fijado por digest: el tag es informativo, el digest garantiza el contenido
+  # (el incidente de trivy-action de marzo de 2026 mostro por que no basta con el tag).
+  TRIVY_IMAGE: aquasec/trivy:0.74.0@sha256:62b1e65e8869bc4b4c6aa4fa2b21595256c7c2f6018a9d9ad61caf87187c1969
 
 jobs:
   # ------------------------------------------------------------------
@@ -52,7 +63,7 @@ jobs:
           path: |
             target/surefire-reports/
             target/site/jacoco/
-          retention-days: 14
+          retention-days: 30
           overwrite: true
 
   # ------------------------------------------------------------------
@@ -98,7 +109,7 @@ jobs:
           name: codeql-sarif
           path: sarif-results/
           if-no-files-found: error
-          retention-days: 14
+          retention-days: 30
           overwrite: true
 
   # ------------------------------------------------------------------
@@ -115,15 +126,16 @@ jobs:
         run: pipx install semgrep==1.179.0
 
       # --config auto exige --metrics=on (con off Semgrep aborta)
-      - name: Ejecutar Semgrep
+      # Reporte JSON (equivale a --json --output semgrep-report.json) + SARIF para Code scanning
+      - name: Ejecutar Semgrep (reporte JSON)
         run: |
           mkdir -p semgrep-out
           semgrep scan \
             --config auto \
             --config .semgrep.yml \
             --metrics=on \
-            --json-output=semgrep-out/semgrep-results.json \
-            --sarif-output=semgrep-out/semgrep-results.sarif \
+            --json-output=semgrep-out/semgrep-report.json \
+            --sarif-output=semgrep-out/semgrep-report.sarif \
             src/main/java
 
       - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
@@ -132,7 +144,7 @@ jobs:
           name: semgrep-reports
           path: semgrep-out/
           if-no-files-found: error
-          retention-days: 14
+          retention-days: 30
           overwrite: true
 
   # ------------------------------------------------------------------
@@ -151,16 +163,19 @@ jobs:
           java-version: ${{ env.JAVA_VERSION }}
           cache: maven
 
-      - name: Ejecutar SpotBugs + FindSecBugs
-        run: mvn -B clean compile com.github.spotbugs:spotbugs-maven-plugin:spotbugs
+      # XML (lo lee el Quality Gate y el parser "SpotBugs Scan" de DefectDojo) + SARIF en JSON (spotbugsSarif.json)
+      - name: Ejecutar SpotBugs + FindSecBugs (reportes XML y JSON)
+        run: mvn -B clean compile com.github.spotbugs:spotbugs-maven-plugin:spotbugs -Dspotbugs.sarifOutput=true
 
       - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         if: always()
         with:
           name: spotbugs-reports
-          path: target/spotbugsXml.xml
+          path: |
+            target/spotbugsXml.xml
+            target/spotbugsSarif.json
           if-no-files-found: error
-          retention-days: 14
+          retention-days: 30
           overwrite: true
 
   # ------------------------------------------------------------------
@@ -170,8 +185,6 @@ jobs:
     name: SCA - SBOM + Trivy
     runs-on: ubuntu-24.04
     timeout-minutes: 25
-    env:
-      TRIVY_IMAGE: aquasec/trivy:0.74.0
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
 
@@ -186,14 +199,18 @@ jobs:
           mvn -B org.cyclonedx:cyclonedx-maven-plugin:2.9.3:makeAggregateBom
           test -s target/bom.json
 
+      # Riesgos aceptados con caducidad: .trivyignore.yaml (si existe; ver evidencias/sca/riesgos-aceptados.md)
       - name: Reporte SCA completo (JSON; no bloquea, decide el Quality Gate)
         run: |
           mkdir -p "$RUNNER_TEMP/trivy-cache"
+          ignore=()
+          if [ -f .trivyignore.yaml ]; then cp .trivyignore.yaml target/trivyignore.yaml; ignore=(--ignorefile /work/trivyignore.yaml); fi
           docker run --rm \
             -v "$GITHUB_WORKSPACE/target:/work" \
             -v "$RUNNER_TEMP/trivy-cache:/root/.cache/trivy" \
             "$TRIVY_IMAGE" sbom \
             --scanners vuln \
+            "${ignore[@]}" \
             --exit-code 0 \
             --format json \
             --output /work/sca-report.json \
@@ -201,12 +218,15 @@ jobs:
 
       - name: Tabla HIGH/CRITICAL para el log
         run: |
+          ignore=()
+          if [ -f target/trivyignore.yaml ]; then ignore=(--ignorefile /work/trivyignore.yaml); fi
           docker run --rm \
             -v "$GITHUB_WORKSPACE/target:/work" \
             -v "$RUNNER_TEMP/trivy-cache:/root/.cache/trivy" \
             "$TRIVY_IMAGE" sbom \
             --scanners vuln \
             --skip-db-update \
+            "${ignore[@]}" \
             --severity HIGH,CRITICAL \
             --exit-code 0 \
             --format table \
@@ -223,7 +243,7 @@ jobs:
             target/sca-report.json
             target/sca-table.txt
           if-no-files-found: error
-          retention-days: 14
+          retention-days: 30
           overwrite: true
 
   # ------------------------------------------------------------------
@@ -261,7 +281,8 @@ jobs:
             odc-data-
 
       # -Dodc.failBuildOnCVSS=11 = nunca fallar aqui: el reporte siempre se genera y decide el Quality Gate
-      - name: Ejecutar Dependency-Check (HTML + JSON)
+      # JSON (Quality Gate) + XML (parser "Dependency Check Scan" de DefectDojo, que solo acepta XML) + HTML (lectura humana)
+      - name: Ejecutar Dependency-Check (HTML + JSON + XML)
         env:
           NVD_API_KEY: ${{ secrets.NVD_API_KEY }}
         run: mvn -B org.owasp:dependency-check-maven:check -Dodc.failBuildOnCVSS=11
@@ -273,12 +294,83 @@ jobs:
           path: |
             target/dependency-check-report.html
             target/dependency-check-report.json
+            target/dependency-check-report.xml
           if-no-files-found: error
-          retention-days: 14
+          retention-days: 30
           overwrite: true
 
   # ------------------------------------------------------------------
-  # 7. Imagen Docker: se construye y se arranca; el healthcheck debe quedar "healthy"
+  # 7. Analisis de la IMAGEN del proyecto con Trivy: se construye con el Dockerfile de este repo y se escanea
+  #    (no una imagen generica). Reporte JSON completo; el Quality Gate decide (HIGH/CRITICAL con correccion).
+  # ------------------------------------------------------------------
+  image-scan:
+    name: Image Scan - Trivy
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+
+      - name: Construir la imagen del proyecto
+        run: docker build -t webapi:ci .
+
+      # Equivale a: trivy image --format json --output trivy-report.json webapi:ci
+      # Riesgos aceptados con caducidad: .trivyignore.yaml (si existe; ver evidencias/sca/riesgos-aceptados.md)
+      - name: Trivy - escanear la imagen (reporte JSON; no bloquea, decide el Quality Gate)
+        run: |
+          mkdir -p image-scan-out "$RUNNER_TEMP/trivy-cache"
+          mounts=(); ignore=()
+          if [ -f .trivyignore.yaml ]; then
+            mounts=(-v "$GITHUB_WORKSPACE/.trivyignore.yaml:/.trivyignore.yaml:ro"); ignore=(--ignorefile /.trivyignore.yaml)
+          fi
+          docker run --rm \
+            -v /var/run/docker.sock:/var/run/docker.sock \
+            -v "$RUNNER_TEMP/trivy-cache:/root/.cache/trivy" \
+            -v "$GITHUB_WORKSPACE/image-scan-out:/out" \
+            "${mounts[@]}" \
+            "$TRIVY_IMAGE" image \
+            --scanners vuln,secret \
+            "${ignore[@]}" \
+            --exit-code 0 \
+            --format json \
+            --output /out/trivy-report.json \
+            webapi:ci
+
+      - name: Tabla HIGH/CRITICAL para el log
+        run: |
+          mounts=(); ignore=()
+          if [ -f .trivyignore.yaml ]; then
+            mounts=(-v "$GITHUB_WORKSPACE/.trivyignore.yaml:/.trivyignore.yaml:ro"); ignore=(--ignorefile /.trivyignore.yaml)
+          fi
+          docker run --rm \
+            -v /var/run/docker.sock:/var/run/docker.sock \
+            -v "$RUNNER_TEMP/trivy-cache:/root/.cache/trivy" \
+            -v "$GITHUB_WORKSPACE/image-scan-out:/out" \
+            "${mounts[@]}" \
+            "$TRIVY_IMAGE" image \
+            --scanners vuln,secret \
+            --skip-db-update \
+            "${ignore[@]}" \
+            --severity HIGH,CRITICAL \
+            --ignore-unfixed \
+            --exit-code 0 \
+            --format table \
+            --output /out/trivy-table.txt \
+            webapi:ci
+          cat image-scan-out/trivy-table.txt
+
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        if: always()
+        with:
+          name: trivy-image-report
+          path: |
+            image-scan-out/trivy-report.json
+            image-scan-out/trivy-table.txt
+          if-no-files-found: error
+          retention-days: 30
+          overwrite: true
+
+  # ------------------------------------------------------------------
+  # 8. Imagen Docker: se construye y se arranca; el healthcheck debe quedar "healthy"
   # ------------------------------------------------------------------
   docker-smoke-test:
     name: Docker - Build & Smoke Test
@@ -313,7 +405,7 @@ jobs:
         run: docker rm -f webapi || true
 
   # ------------------------------------------------------------------
-  # 8. QUALITY GATE: lee los reportes y rechaza si hay hallazgos HIGH/CRITICAL
+  # 9. QUALITY GATE: lee los reportes y rechaza si hay hallazgos HIGH/CRITICAL
   #    o si algun job requerido fallo / no dejo su reporte
   # ------------------------------------------------------------------
   quality-gate:
@@ -325,6 +417,7 @@ jobs:
       - static-analysis
       - sca-sbom
       - sca-dependency-check
+      - image-scan
       - docker-smoke-test
     if: ${{ always() }}
     runs-on: ubuntu-24.04
@@ -336,6 +429,9 @@ jobs:
         uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
         with:
           path: reports
+
+      - name: Pruebas del Quality Gate
+        run: python3 -m unittest discover -s .github/scripts -v
 
       - name: Evaluar reportes (HIGH y CRITICAL bloquean)
         env:
@@ -349,5 +445,5 @@ jobs:
           name: quality-gate-summary
           path: quality-gate-summary.md
           if-no-files-found: warn
-          retention-days: 14
+          retention-days: 30
           overwrite: true

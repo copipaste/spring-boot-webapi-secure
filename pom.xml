@@ -28,6 +28,12 @@
              del CI. Revisar y retirar estas dos lineas cuando Spring Boot actualice su BOM. -->
         <tomcat.version>10.1.60</tomcat.version>
         <jackson-bom.version>2.21.7</jackson-bom.version>
+
+        <!-- Hallazgos MEDIUM de Trivy sobre la imagen (Laboratorio Final), con correccion en la misma linea:
+             commons-lang3 3.17.0 -> 3.18.0 (CVE-2025-48924) y log4j 2.24.3 -> 2.25.5 (CVE-2026-49844).
+             Mismo criterio que arriba: retirar cuando el BOM de Spring Boot los incluya. -->
+        <commons-lang3.version>3.18.0</commons-lang3.version>
+        <log4j2.version>2.25.5</log4j2.version>
     </properties>
 
     <dependencies>
@@ -105,10 +111,12 @@
                     <nvdApiKeyEnvironmentVariable>NVD_API_KEY</nvdApiKeyEnvironmentVariable>
                     <!-- Sonatype OSS Index exige cuenta desde 2023 y solo producia avisos por cada jar: se usa solo la NVD. -->
                     <ossIndexAnalyzerEnabled>false</ossIndexAnalyzerEnabled>
-                    <!-- JSON: lo lee el Quality Gate. HTML: para humanos y capturas. -->
+                    <!-- JSON: lo lee el Quality Gate. XML: unico formato que acepta el parser "Dependency Check Scan"
+                         de DefectDojo. HTML: para humanos y capturas. -->
                     <formats>
                         <format>HTML</format>
                         <format>JSON</format>
+                        <format>XML</format>
                     </formats>
                     <suppressionFiles>
                         <suppressionFile>dependency-check-suppressions.xml</suppressionFile>
